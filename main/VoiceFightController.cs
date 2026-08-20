@@ -1,4 +1,4 @@
-using NativeFileDialogSharp;
+﻿using NativeFileDialogSharp;
 using Newtonsoft.Json.Linq;
 using VRCNext.Services;
 using VRCNext.Services.Helpers;
@@ -123,6 +123,7 @@ public class VoiceFightController : IDisposable
 
                     _voiceFight?.Dispose();
                     _voiceFight = new VoiceFightService();
+                    AttachMemc();
                     _voiceFight.OnLog += s => Invoke(() => _core.SendToJS("log", new { msg = s, color = "sec" }));
                     _voiceFight.OnKeywordTriggered += word => Invoke(() => _core.SendToJS("vfKeyword", new { word }));
                     _voiceFight.OnRecognized += (displayHtml, cleanText, isPartial) =>
@@ -363,6 +364,7 @@ public class VoiceFightController : IDisposable
         else
         {
             _voiceFight = new VoiceFightService();
+            AttachMemc();
             _voiceFight.OnLog += s => Invoke(() => _core.SendToJS("log", new { msg = s, color = "sec" }));
             _voiceFight.OnKeywordTriggered += word => Invoke(() => _core.SendToJS("vfKeyword", new { word }));
             _voiceFight.OnRecognized += (displayHtml, cleanText, isPartial) =>
@@ -405,6 +407,29 @@ public class VoiceFightController : IDisposable
     {
         _voiceFight?.Dispose();
         _voiceFight = null;
+    }
+
+    // Memory Console
+
+    private VRCNext.Services.Memc.MemModule? _memc;
+
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        _memc = m;
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "engine", Label = "VOSK engine instance",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.CountOnly,
+            Count = () => _voiceFight == null ? 0 : 1,
+        });
+        AttachMemc();
+    }
+
+    private void AttachMemc()
+    {
+        if (_memc == null) return;
+        _voiceFight?.MemcRegister(_memc);
     }
 
     // Photino compatibility shim

@@ -1,0 +1,366 @@
+﻿/* === Memory Manager (Memory Console) === */
+
+/* Two class names so this always outranks .modal-box regardless of stylesheet
+   order (custom themes are appended after ours). .modal-box defaults to 460px. */
+.modal-box.memc-box {
+    width: min(2000px, 97vw);
+    max-width: 97vw;
+    /* Matches the overlay padding (tb-h + 20px top, 20px bottom) exactly. */
+    height: calc(100vh - var(--tb-h, 0px) - 40px);
+    max-height: calc(100vh - var(--tb-h, 0px) - 40px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+}
+
+.memc-headline {
+    margin-left: 12px;
+    font-family: var(--font-mono);
+    font-size: calc(11px + var(--fs-off, 0px));
+    color: var(--tx2);
+    font-variant-numeric: tabular-nums;
+}
+
+.memc-livedot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--tx3);
+    margin-right: 10px;
+    flex-shrink: 0;
+}
+.memc-livedot.on { background: var(--ok); box-shadow: 0 0 6px rgba(45,212,140,.7); }
+
+/* Toolbar */
+
+.memc-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 10px 20px 12px;
+    border-bottom: 1px solid var(--brd);
+    flex-shrink: 0;
+}
+
+.memc-tabs { display: flex; gap: 2px; background: var(--bg-input); border-radius: 9px; padding: 3px; }
+
+.memc-tab {
+    border: none;
+    background: transparent;
+    color: var(--tx2);
+    font-family: var(--font-app);
+    font-size: calc(11.5px + var(--fs-off, 0px));
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background .12s, color .12s;
+}
+.memc-tab:hover { background: var(--bg-hover); color: var(--tx1); }
+.memc-tab.active { background: var(--accent); color: #fff; }
+
+.memc-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.memc-btn { font-size: calc(11px + var(--fs-off, 0px)); padding: 6px 10px; }
+.memc-btn .msi { font-size: calc(15px + var(--fs-off, 0px)); }
+.memc-btn-warn:hover { color: var(--warn); }
+
+/* Body */
+
+.memc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 22px; }
+.memc-pane { display: flex; flex-direction: column; gap: 14px; }
+.memc-pane[hidden] { display: none; }
+
+.memc-hint {
+    font-size: calc(11px + var(--fs-off, 0px));
+    color: var(--tx2);
+    line-height: 1.55;
+    background: var(--bg-input);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 8px 12px;
+}
+.memc-hint code {
+    font-family: var(--font-mono);
+    background: var(--bg-hover);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--tx1);
+}
+
+.memc-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 1000px) { .memc-grid2 { grid-template-columns: 1fr; } }
+
+.memc-panel {
+    background: var(--bg-input);
+    border: 1px solid var(--brd);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.memc-panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--brd);
+    font-size: calc(12px + var(--fs-off, 0px));
+    font-weight: 700;
+    color: var(--tx0);
+}
+.memc-src {
+    font-family: var(--font-mono);
+    font-size: calc(9.5px + var(--fs-off, 0px));
+    font-weight: 500;
+    color: var(--tx3);
+    text-transform: none;
+}
+
+/* Key/value rows */
+
+/* Rows flow into as many ~330px columns as the panel can hold, so a wide window is
+   actually used instead of leaving a huge gap between key and value. Column-width
+   rather than column-count, so it adapts to the panel, not the viewport. */
+.memc-rows { padding: 6px 0; columns: 330px auto; column-gap: 6px; }
+/* Lists whose rows are followed by an explanatory note must stay in one column,
+   otherwise a note can land in a different column than its row. */
+.memc-rows.single { columns: auto; }
+
+.memc-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 4px 14px;
+    font-size: calc(11px + var(--fs-off, 0px));
+}
+.memc-row { break-inside: avoid; }
+.memc-row:hover { background: rgba(255,255,255,.02); }
+.memc-row-k { color: var(--tx2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memc-row-v {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--tx0);
+    font-weight: 600;
+    flex-shrink: 0;
+    min-width: 92px;
+    text-align: right;
+}
+.memc-row-v.na { color: var(--tx3); font-weight: 500; }
+
+/* Quality badges */
+
+.memc-q {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: calc(8.5px + var(--fs-off, 0px));
+    font-weight: 700;
+    letter-spacing: .3px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 5px;
+    min-width: 74px;
+    text-align: center;
+}
+.memc-q.measured     { background: rgba(45,212,140,.14);  color: var(--ok); }
+.memc-q.runtime      { background: rgba(92,118,255,.16);  color: var(--accent-lt); }
+.memc-q.instrumented { background: rgba(140,165,255,.14); color: var(--cyan); }
+.memc-q.probe        { background: rgba(255,186,55,.14);  color: var(--warn); }
+.memc-q.filesize     { background: rgba(183,183,195,.12); color: var(--tx2); }
+.memc-q.count        { background: rgba(183,183,195,.10); color: var(--tx3); }
+.memc-q.throughput   { background: rgba(140,165,255,.10); color: var(--cyan); }
+.memc-q.unmeasurable { background: rgba(255,75,85,.12);   color: var(--err); }
+
+/* Attribution bar */
+
+.memc-attr { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 1000px) { .memc-attr { grid-template-columns: repeat(2, 1fr); } }
+
+.memc-card {
+    background: var(--bg-input);
+    border: 1px solid var(--brd);
+    border-radius: 12px;
+    padding: 12px 14px;
+}
+.memc-card-k {
+    font-size: calc(10px + var(--fs-off, 0px));
+    font-weight: 700;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+    color: var(--tx3);
+    margin-bottom: 6px;
+}
+.memc-card-v {
+    font-family: var(--font-mono);
+    font-size: calc(19px + var(--fs-off, 0px));
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--tx0);
+}
+.memc-card-s {
+    font-size: calc(10.5px + var(--fs-off, 0px));
+    color: var(--tx2);
+    margin-top: 4px;
+    line-height: 1.4;
+}
+.memc-card.warnbox { border-color: rgba(255,186,55,.35); }
+.memc-card.warnbox .memc-card-v { color: var(--warn); }
+
+/* Tables */
+
+.memc-tablewrap { overflow-x: auto; }
+
+.memc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: calc(10.5px + var(--fs-off, 0px));
+}
+.memc-table th {
+    text-align: right;
+    padding: 8px 12px;
+    font-weight: 700;
+    color: var(--tx3);
+    font-size: calc(9.5px + var(--fs-off, 0px));
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    border-bottom: 1px solid var(--brd);
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    background: var(--bg-input);
+}
+.memc-table th:first-child, .memc-table td:first-child { text-align: left; }
+.memc-table td {
+    padding: 5px 12px;
+    text-align: right;
+    color: var(--tx1);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    border-bottom: 1px solid rgba(255,255,255,.03);
+}
+.memc-table td:first-child { font-family: var(--font-app); color: var(--tx2); white-space: normal; }
+.memc-table tr:hover td { background: rgba(255,255,255,.02); }
+.memc-table .pos { color: var(--warn); }
+.memc-table .neg { color: var(--ok); }
+.memc-table .dim { color: var(--tx3); }
+
+.memc-trend { font-weight: 700; }
+.memc-trend.growing  { color: var(--warn); }
+.memc-trend.shrinking{ color: var(--ok); }
+.memc-trend.stable   { color: var(--tx3); }
+.memc-trend.unknown  { color: var(--tx3); opacity: .6; }
+
+/* Modules */
+
+.memc-mod {
+    background: var(--bg-input);
+    border: 1px solid var(--brd);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+.memc-mod-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    user-select: none;
+}
+.memc-mod-head:hover { background: var(--bg-hover); }
+.memc-mod-chev { color: var(--tx3); font-size: calc(18px + var(--fs-off, 0px)) !important; transition: transform .12s; }
+.memc-mod.open .memc-mod-chev { transform: rotate(90deg); }
+.memc-mod-name { font-size: calc(12.5px + var(--fs-off, 0px)); font-weight: 700; color: var(--tx0); flex: 1; min-width: 0; }
+.memc-mod-state {
+    font-size: calc(9.5px + var(--fs-off, 0px));
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    padding: 2px 8px;
+    border-radius: 5px;
+    flex-shrink: 0;
+}
+.memc-mod-state.running { background: rgba(45,212,140,.14); color: var(--ok); }
+.memc-mod-state.stopped { background: rgba(255,186,55,.12); color: var(--warn); }
+.memc-mod-state.idle    { background: rgba(183,183,195,.10); color: var(--tx3); }
+.memc-mod-flow {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--cyan);
+    flex-shrink: 0;
+    text-align: right;
+}
+.memc-mod-bytes {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    color: var(--tx0);
+    min-width: 96px;
+    text-align: right;
+    flex-shrink: 0;
+}
+.memc-mod-body { border-top: 1px solid var(--brd); padding: 4px 0 8px; }
+.memc-mod[hidden] { display: none; }
+
+.memc-life {
+    margin: 8px 14px 4px;
+    padding: 7px 11px;
+    border-radius: 8px;
+    background: var(--bg-hover);
+    font-size: calc(10.5px + var(--fs-off, 0px));
+    color: var(--tx2);
+    line-height: 1.5;
+}
+.memc-life.retained { border-left: 2px solid var(--err); }
+
+.memc-res { display: flex; align-items: baseline; gap: 10px; padding: 4px 14px; font-size: calc(10.5px + var(--fs-off, 0px)); }
+.memc-res:hover { background: rgba(255,255,255,.02); }
+.memc-res-k { color: var(--tx2); flex: 1; min-width: 0; }
+.memc-res-cat {
+    font-family: var(--font-mono);
+    font-size: calc(8.5px + var(--fs-off, 0px));
+    color: var(--tx3);
+    flex-shrink: 0;
+    min-width: 60px;
+}
+.memc-res-n { font-family: var(--font-mono); color: var(--tx3); flex-shrink: 0; min-width: 62px; text-align: right; font-variant-numeric: tabular-nums; }
+.memc-res-v { font-family: var(--font-mono); color: var(--tx0); font-weight: 600; flex-shrink: 0; min-width: 88px; text-align: right; font-variant-numeric: tabular-nums; }
+.memc-res-v.na { color: var(--tx3); font-weight: 500; }
+.memc-note { padding: 0 14px 6px 14px; font-size: calc(10px + var(--fs-off, 0px)); color: var(--tx3); line-height: 1.5; }
+
+/* Snapshot bar */
+
+.memc-snapbar { display: flex; gap: 10px; flex-wrap: wrap; }
+.memc-snap {
+    flex: 1 1 240px;
+    background: var(--bg-input);
+    border: 1px solid var(--brd);
+    border-radius: 12px;
+    padding: 10px 14px;
+}
+.memc-snap-k { font-size: calc(10px + var(--fs-off, 0px)); font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--tx3); }
+.memc-snap-v { font-family: var(--font-mono); font-size: calc(11px + var(--fs-off, 0px)); color: var(--tx1); margin-top: 5px; line-height: 1.6; }
+.memc-snap.empty .memc-snap-v { color: var(--tx3); }
+
+/* Legend + about */
+
+.memc-legend { padding: 8px 0; }
+.memc-legend-row { display: flex; align-items: baseline; gap: 12px; padding: 6px 14px; font-size: calc(11px + var(--fs-off, 0px)); color: var(--tx2); line-height: 1.5; }
+
+.memc-about { padding: 12px 14px; font-size: calc(11.5px + var(--fs-off, 0px)); color: var(--tx2); line-height: 1.65; }
+.memc-about p { margin: 0 0 10px; }
+.memc-about strong { color: var(--tx0); }
+.memc-formula {
+    font-family: var(--font-mono);
+    font-size: calc(10.5px + var(--fs-off, 0px));
+    background: var(--bg-hover);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--tx1);
+    margin: 0 0 10px;
+    white-space: pre;
+    overflow-x: auto;
+}

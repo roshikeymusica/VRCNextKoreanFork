@@ -3539,6 +3539,97 @@ public class TimelineService : IDisposable
         return result;
     }
 
+    // Memory Console
+
+    // Registers the in-memory caches this service holds. Byte sizes are computed by
+    // walking the live objects, so they are measurements of this process, not estimates
+    // of what a timeline "usually" costs.
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "events", Label = "Timeline events (in memory)",
+            Category = VRCNext.Services.Memc.MemCategory.History,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = $"Loaded at startup. DbOptimize cap: {(_optimizeMode ? _maxN.ToString() : "off, whole table")}.",
+            Count = () => { lock (_lock) return _events.Count; },
+            Bytes = () => { lock (_lock) return SizeOfEvents(); },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "friendEvents", Label = "Friend timeline events (in memory)",
+            Category = VRCNext.Services.Memc.MemCategory.History,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => { lock (_lock) return _friendEvents.Count; },
+            Bytes = () => { lock (_lock) return SizeOfFriendEvents(); },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "loggedNotifs", Label = "Logged notification ids",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => { lock (_lock) return _loggedNotifs.Count; },
+            Bytes = () =>
+            {
+                lock (_lock)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.HashSetOverhead(_loggedNotifs.Count);
+                    foreach (var s in _loggedNotifs) b += VRCNext.Services.Memc.MemorySizer.OfString(s);
+                    return b;
+                }
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "sqliteConn", Label = "SQLite connection page cache",
+            Category = VRCNext.Services.Memc.MemCategory.Database,
+            Quality = VRCNext.Services.Memc.MemQuality.NotMeasurable,
+            Note = "PRAGMA cache_size=-1024 caps this connection at 1 MB, but SQLite exposes no live counter through Microsoft.Data.Sqlite.",
+        });
+    }
+
+    private long SizeOfEvents()
+    {
+        long b = VRCNext.Services.Memc.MemorySizer.ListOverhead(_events.Count);
+        foreach (var e in _events) b += SizeOfEvent(e);
+        return b;
+    }
+
+    private static long SizeOfEvent(TimelineEvent e)
+    {
+        var S = (Func<string, long>)VRCNext.Services.Memc.MemorySizer.OfString;
+        long b = VRCNext.Services.Memc.MemorySizer.ObjectHeader + 8 * 22;
+        b += S(e.Id) + S(e.Type) + S(e.Timestamp) + S(e.WorldId) + S(e.WorldName) + S(e.WorldThumb)
+           + S(e.Location) + S(e.PhotoPath) + S(e.PhotoUrl) + S(e.UserId) + S(e.UserName) + S(e.UserImage)
+           + S(e.NotifId) + S(e.NotifType) + S(e.NotifTitle) + S(e.SenderName) + S(e.SenderId)
+           + S(e.SenderImage) + S(e.Message) + S(e.LeftAt);
+        b += VRCNext.Services.Memc.MemorySizer.ListOverhead(e.Players.Count);
+        foreach (var p in e.Players)
+        {
+            b += VRCNext.Services.Memc.MemorySizer.ObjectHeader + 8 * 5;
+            b += S(p.UserId) + S(p.DisplayName) + S(p.Image);
+            b += VRCNext.Services.Memc.MemorySizer.ListOverhead(p.JoinedAts.Count);
+            foreach (var j in p.JoinedAts) b += S(j);
+            b += VRCNext.Services.Memc.MemorySizer.ListOverhead(p.LeftAts.Count);
+            foreach (var l in p.LeftAts) b += S(l);
+        }
+        return b;
+    }
+
+    private long SizeOfFriendEvents()
+    {
+        var S = (Func<string, long>)VRCNext.Services.Memc.MemorySizer.OfString;
+        long b = VRCNext.Services.Memc.MemorySizer.ListOverhead(_friendEvents.Count);
+        foreach (var e in _friendEvents)
+        {
+            b += VRCNext.Services.Memc.MemorySizer.ObjectHeader + 8 * 14;
+            b += S(e.Id) + S(e.Type) + S(e.Timestamp) + S(e.FriendId) + S(e.FriendName) + S(e.FriendImage)
+               + S(e.WorldId) + S(e.WorldName) + S(e.WorldThumb) + S(e.Location) + S(e.OldValue)
+               + S(e.NewValue) + S(e.LeftAt);
+        }
+        return b;
+    }
+
     // Disposal
 
     public void Dispose()

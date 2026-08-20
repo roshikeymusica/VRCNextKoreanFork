@@ -315,6 +315,7 @@ public class KikitanXDController : IDisposable
         };
         _service.OnOutput += SpeakTts;
         _service.OnChatboxSent += () => _core.OnChatboxPauseRequest?.Invoke(15_000);
+        AttachMemc();
         var micSel = InputSelection;
         var micIdx = AudioDeviceManager.ResolveInputIndex(micSel);
         if (micIdx == null)
@@ -383,4 +384,35 @@ public class KikitanXDController : IDisposable
     }
 
     private static void Invoke(Action action) => action();
+
+    // Memory Console
+
+    private VRCNext.Services.Memc.MemModule? _memc;
+
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        _memc = m;
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "engine", Label = "Active speech engine",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.CountOnly,
+            Note = "0 = no engine instantiated. The engine in use is named in the module header.",
+            Count = () => _service == null ? 0 : 1,
+        });
+        AttachMemc();
+    }
+
+    // Re-runs whenever the backing service is recreated so the resource rows always
+    // point at the live instance. MemModule.Add is idempotent by id.
+    private void AttachMemc()
+    {
+        if (_memc == null) return;
+        switch (_service)
+        {
+            case LocalKikitanService lk: lk.MemcRegister(_memc); break;
+            case KikitanXDService kx: kx.MemcRegister(_memc); break;
+            default: break;
+        }
+    }
 }

@@ -48,6 +48,7 @@
     <link rel="stylesheet" href="modules/settings/settings.css">
     <link rel="stylesheet" href="modules/user-profile/profile-editor.css">
     <link rel="stylesheet" href="core/modals/modals.css">
+    <link rel="stylesheet" href="modules/tools/activity-log/memc/memorymanager.css">
     <link rel="stylesheet" href="core/modals/invite-modal/invite-modal.css">
     <link rel="stylesheet" href="core/modals/user-modal/user-modal.css">
     <link rel="stylesheet" href="core/modals/world-modal/world-modal.css">
@@ -128,7 +129,7 @@
     <div class="sidebar" id="sidebarEl">
         <div class="sidebar-resizer" id="sidebarResizer" data-side="left"></div>
         <div class="sidebar-sep"></div>
-        <div class="logo"><div class="logo-icon" id="logoIcon">V</div><div class="logo-txt"><div class="logo-text-row"><div class="logo-text">VRCNext</div></div><div class="logo-sub">v2026.43.0</div></div></div>
+        <div class="logo"><div class="logo-icon" id="logoIcon">V</div><div class="logo-txt"><div class="logo-text-row"><div class="logo-text">VRCNext</div></div><div class="logo-sub">v2026.43.2</div></div></div>
         <div class="nav vrcn-scrollbar" id="navEl"></div>
         <div class="play-area"><button class="btn-play" onclick="playVRChat()" data-i18n-title="sidebar.play_vrchat" title="Play VRChat"><span class="play-icon-wrap"><span class="msi play-icon">play_arrow</span></span><span class="play-copy pl"><strong class="play-title" data-i18n="sidebar.play_vrchat">Play VRChat</strong><span class="play-sub" id="playSubText"></span></span><span class="msi play-arrow pl">chevron_right</span></button></div>
     </div>
@@ -535,6 +536,9 @@
 
     <div class="modal-overlay" id="modalFriendPicker" style="display:none;" onclick="if(event.target===this)closeFriendPicker()"></div>
 
+    <!-- Memory Manager (Memory Console, hidden until /memc true) -->
+    <div class="modal-overlay" id="modalMemoryManager" style="display:none;" onclick="if(event.target===this)closeMemoryManager()"></div>
+
     <!-- VRChat Config Modal -->
     <div class="modal-overlay" id="modalVrcConfig" style="display:none;" onclick="if(event.target===this)this.style.display='none'"></div>
 
@@ -768,6 +772,7 @@
             themeEditorPanel:   'modules/settings/theme-editor.html',
             vrcnPlusEditor:     'modules/user-profile/profile-editor.html',
             ssModal:            'core/SmartSearch/smart-search.html',
+            modalMemoryManager: 'modules/tools/activity-log/memc/memorymanager.html',
         };
 
         const scripts = [
@@ -867,6 +872,7 @@
             'core/modals/export-modal/export-modal.js',
             'core/modals/import-modal/import-modal.js',
             'core/Blyat/blyat.js',
+            'modules/tools/activity-log/memc/memorymanager.js',
         ];
 
         try {

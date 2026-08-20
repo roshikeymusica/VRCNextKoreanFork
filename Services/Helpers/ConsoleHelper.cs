@@ -1,4 +1,4 @@
-namespace VRCNext.Services.Helpers;
+﻿namespace VRCNext.Services.Helpers;
 
 public static class ConsoleHelper
 {
@@ -13,6 +13,10 @@ public static class ConsoleHelper
         {
             case "/help":
                 return new(HelpText, "info");
+
+            case "/memc":
+                // Handled by AppShell.MemcCommand, which owns the MemoryManager instance.
+                return new("", "info", "memc", new { args = parts });
 
             case "/trim":
                 return new("Triggering memory trim...", "sec", "forceTrim", new { });

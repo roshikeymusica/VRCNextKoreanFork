@@ -192,6 +192,68 @@ public class CoreLibrary
         }
     }
 
+    // Memory Console — the caches CoreLibrary itself owns.
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "playerProfiles", Label = "Player profile JSON cache",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Deep = true,
+            Note = "Trimmed to 150 entries once it passes 300 (StorePlayerProfile / TrimCaches).",
+            Count = () => PlayerProfileCache.Count,
+            Bytes = () =>
+            {
+                long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(PlayerProfileCache.Count);
+                foreach (var kv in PlayerProfileCache)
+                    b += VRCNext.Services.Memc.MemorySizer.OfString(kv.Key)
+                       + VRCNext.Services.Memc.MemorySizer.OfJToken(kv.Value);
+                return b;
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "ageVerified", Label = "Age-verified flags",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => PlayerAgeVerifiedCache.Count,
+            Bytes = () =>
+            {
+                long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(PlayerAgeVerifiedCache.Count, 8, 1);
+                foreach (var k in PlayerAgeVerifiedCache.Keys) b += VRCNext.Services.Memc.MemorySizer.OfString(k);
+                return b;
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "vrWorldCache", Label = "VR overlay world name/thumb cache",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = "Trimmed to 75 entries once it passes 150 (TrimCaches).",
+            Count = () => { lock (VrWorldCache) return VrWorldCache.Count; },
+            Bytes = () => { lock (VrWorldCache) return VRCNext.Services.Memc.MemorySizer.OfStringPairMap(VrWorldCache); },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "perminiList", Label = "Permini entries",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => PerminiList.Count,
+            Bytes = () =>
+            {
+                long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(PerminiList.Count);
+                foreach (var kv in PerminiList)
+                    b += VRCNext.Services.Memc.MemorySizer.OfString(kv.Key)
+                       + VRCNext.Services.Memc.MemorySizer.ObjectHeader + 40
+                       + VRCNext.Services.Memc.MemorySizer.OfString(kv.Value.Start)
+                       + VRCNext.Services.Memc.MemorySizer.OfString(kv.Value.End)
+                       + VRCNext.Services.Memc.MemorySizer.ListOverhead(kv.Value.Days.Count, 4);
+                return b;
+            },
+        });
+    }
+
     public string FixLocalUrl(string url)
     {
         if (string.IsNullOrEmpty(url) || !url.StartsWith("http://localhost:")) return url;

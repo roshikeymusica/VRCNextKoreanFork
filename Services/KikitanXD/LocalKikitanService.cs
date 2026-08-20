@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -34,6 +34,7 @@ public sealed class LocalKikitanService : IKikitanSpeechService
     public void UpdateSettings(KikitanXDSettings settings) { }
     public void Stop() { }
     public void Dispose() { }
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m) { }
 }
 #else
 
@@ -67,6 +68,19 @@ public sealed class LocalKikitanService : IKikitanSpeechService
     private string _loadedLlmId = "";
     private string _loadedSourceLang = "";
     private bool   _loadedGpu;
+
+    // Memory Console attach point. Null while /memc is off, which makes every hook a null check.
+    private VRCNext.Services.Memc.MemModule? _memc;
+    private string _loadedSttPath = "";
+    private string _loadedLlmPath = "";
+
+    private VRCNext.Services.Memc.MemNativeProbe? SttProbe() => VRCNext.Services.Memc.MemcHook.Probe(
+        _memc, "whisperNative", "Whisper context (native)", VRCNext.Services.Memc.MemCategory.Models,
+        () => _whisperFactory != null);
+
+    private VRCNext.Services.Memc.MemNativeProbe? LlmProbe() => VRCNext.Services.Memc.MemcHook.Probe(
+        _memc, "llamaNative", "LLM weights (native)", VRCNext.Services.Memc.MemCategory.Models,
+        () => _llmWeights != null);
 
     private bool NeedsLlm => _translateEnabled
         || string.Equals(_personality, "kawai", StringComparison.OrdinalIgnoreCase);
@@ -235,13 +249,18 @@ public sealed class LocalKikitanService : IKikitanSpeechService
 
         try
         {
-            var p = new ModelParams(LocalAiManager.PathFor(llmItem))
+            var modelPath = LocalAiManager.PathFor(llmItem);
+            var p = new ModelParams(modelPath)
             {
                 ContextSize   = 2048,
                 GpuLayerCount = useGpu ? 999 : 0,
             };
+            var scope = VRCNext.Services.Memc.MemcHook.BeginLoad(LlmProbe());
             _llmWeights = LLamaWeights.LoadFromFile(p);
             _llm = new StatelessExecutor(_llmWeights, p);
+            _loadedLlmPath = modelPath;
+            scope?.Complete($"{llmItem.Name}, {(useGpu ? "GPU offload" : "CPU")}, "
+                          + $"file {VRCNext.Services.Memc.MemorySizer.Human(FileLength(modelPath))}.");
             Log($"Kikitan XD: loaded {llmItem.Name} ({(useGpu ? "GPU" : "CPU")})");
         }
         catch (Exception ex)
@@ -253,10 +272,18 @@ public sealed class LocalKikitanService : IKikitanSpeechService
 
     private void BuildWhisper(string modelPath)
     {
+        var scope = VRCNext.Services.Memc.MemcHook.BeginLoad(SttProbe());
         try { _whisperFactory = WhisperFactory.FromPath(modelPath); }
         catch (Exception ex) { throw new Exception($"Whisper runtime could not be loaded. ({ex.Message})"); }
+        _loadedSttPath = modelPath;
+        scope?.Complete($"file {VRCNext.Services.Memc.MemorySizer.Human(FileLength(modelPath))}.");
 
         BuildProcessor();
+    }
+
+    private static long FileLength(string path)
+    {
+        try { return new FileInfo(path).Length; } catch { return 0; }
     }
 
     private void BuildProcessor()
@@ -300,10 +327,12 @@ public sealed class LocalKikitanService : IKikitanSpeechService
                 {
                     lock (_whisperLock)
                     {
+                        var rel = VRCNext.Services.Memc.MemcHook.BeginRelease(SttProbe());
                         try { _whisper?.Dispose(); } catch { }
                         _whisper = null;
                         try { _whisperFactory?.Dispose(); } catch { }
                         _whisperFactory = null;
+                        rel?.Complete();
                         BuildWhisper(LocalAiManager.PathFor(item));
                     }
                     _loadedSttId = item.Id;
@@ -326,12 +355,14 @@ public sealed class LocalKikitanService : IKikitanSpeechService
                 bool held = _llmLock.Wait(20000);
                 try
                 {
+                    var rel = VRCNext.Services.Memc.MemcHook.BeginRelease(LlmProbe());
                     (_llm as IDisposable)?.Dispose();
                     _llm = null;
                     try { _llmWeights?.Dispose(); } catch { }
                     _llmWeights = null;
                     GC.Collect();
                     GC.WaitForPendingFinalizers();
+                    rel?.Complete();
 
                     LoadLlm(s, gpu);
                     _loadedLlmId = s.LocalLlmModel ?? "";
@@ -393,21 +424,27 @@ public sealed class LocalKikitanService : IKikitanSpeechService
         bool held = _llmLock.Wait(10000);
         try
         {
+            var rel = VRCNext.Services.Memc.MemcHook.BeginRelease(LlmProbe());
             (_llm as IDisposable)?.Dispose();
             _llm = null;
             try { _llmWeights?.Dispose(); } catch { }
             _llmWeights = null;
             _loadedLlmId = "";
+            _loadedLlmPath = "";
+            rel?.Complete();
         }
         finally { if (held) _llmLock.Release(); }
 
         lock (_whisperLock)
         {
+            var rel = VRCNext.Services.Memc.MemcHook.BeginRelease(SttProbe());
             try { _whisper?.Dispose(); } catch { }
             _whisper = null;
             try { _whisperFactory?.Dispose(); } catch { }
             _whisperFactory = null;
             _loadedSttId = "";
+            _loadedSttPath = "";
+            rel?.Complete();
         }
 
         GC.Collect();
@@ -802,6 +839,67 @@ public sealed class LocalKikitanService : IKikitanSpeechService
     }
 
     private void Log(string msg) => OnLog?.Invoke(msg);
+
+    // Memory Console
+
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        _memc = m;
+        // Create both probes up front so models that are already loaded are reported as
+        // "loaded before the console was enabled" instead of silently as 0 bytes.
+        SttProbe();
+        LlmProbe();
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "pcmQueue", Label = "Microphone PCM queue",
+            Category = VRCNext.Services.Memc.MemCategory.Audio,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = "Exact sum of the queued byte[] buffers. Producer drops frames above 500 entries.",
+            Count = () => _pcmQueue.Count,
+            Bytes = () =>
+            {
+                long b = 0;
+                foreach (var buf in _pcmQueue) b += VRCNext.Services.Memc.MemorySizer.OfByteArray(buf);
+                return b + VRCNext.Services.Memc.MemorySizer.ObjectHeader;
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "sttModelFile", Label = "Speech model file on disk",
+            Category = VRCNext.Services.Memc.MemCategory.Models,
+            Quality = VRCNext.Services.Memc.MemQuality.FileSize,
+            Note = "File size of the loaded ggml model. The native runtime may map, copy or offload it to the GPU, "
+                 + "so this is not resident RAM. The measured RAM cost is the whisperNative probe.",
+            Bytes = () => _loadedSttPath.Length == 0 ? 0 : FileLength(_loadedSttPath),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "llmModelFile", Label = "Translation model file on disk",
+            Category = VRCNext.Services.Memc.MemCategory.Models,
+            Quality = VRCNext.Services.Memc.MemQuality.FileSize,
+            Note = "File size of the loaded GGUF. The measured RAM cost is the llamaNative probe.",
+            Bytes = () => _loadedLlmPath.Length == 0 ? 0 : FileLength(_loadedLlmPath),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "blockLists", Label = "Blocked words and sentences",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => _blockedWords.Length + _blockedSentences.Length,
+            Bytes = () => VRCNext.Services.Memc.MemorySizer.OfArray(8, _blockedWords.Length)
+                        + VRCNext.Services.Memc.MemorySizer.SumStrings(_blockedWords)
+                        + VRCNext.Services.Memc.MemorySizer.OfArray(8, _blockedSentences.Length)
+                        + VRCNext.Services.Memc.MemorySizer.SumStrings(_blockedSentences),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "gpuVram", Label = "GPU VRAM used by offloaded layers",
+            Category = VRCNext.Services.Memc.MemCategory.Native,
+            Quality = VRCNext.Services.Memc.MemQuality.NotMeasurable,
+            Note = "When GPU offload is on, part of the model lives in VRAM. Neither .NET nor the process "
+                 + "counters can see that, and llama.cpp exposes no allocation counter to us.",
+        });
+    }
 
     public void Dispose()
     {

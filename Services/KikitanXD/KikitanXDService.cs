@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -28,6 +28,7 @@ public sealed class KikitanXDService : IKikitanSpeechService
     public void Stop() { }
     public void Dispose() { }
     public static Task<string> TranslateStandaloneAsync(string apiKey, string text, string sourceLang, string targetLang) => Task.FromResult("");
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m) { }
 }
 #else
 
@@ -571,6 +572,32 @@ public sealed class KikitanXDService : IKikitanSpeechService
     }
 
     private void Log(string msg) => OnLog?.Invoke(msg);
+
+    // Memory Console
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "pcmQueue", Label = "Microphone PCM queue",
+            Category = VRCNext.Services.Memc.MemCategory.Audio,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = "Exact sum of the queued byte[] buffers.",
+            Count = () => _pcmQueue.Count,
+            Bytes = () =>
+            {
+                long b = 0;
+                foreach (var buf in _pcmQueue) b += VRCNext.Services.Memc.MemorySizer.OfByteArray(buf);
+                return b + VRCNext.Services.Memc.MemorySizer.ObjectHeader;
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "cloudBuffers", Label = "Cloud transcription request buffers",
+            Category = VRCNext.Services.Memc.MemCategory.Buffers,
+            Quality = VRCNext.Services.Memc.MemQuality.NotMeasurable,
+            Note = "WAV payloads are built per request and released immediately; there is no retained buffer to measure.",
+        });
+    }
 
     public void Dispose()
     {

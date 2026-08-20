@@ -1,0 +1,105 @@
+        <div class="modal-box memc-box">
+            <div class="fd-modal-bar">
+                <div class="fd-modal-bar-crumbs">
+                    <span class="fd-modal-bar-title">Memory Manager</span>
+                    <span class="memc-headline" id="memcHeadline">—</span>
+                </div>
+                <div class="fd-modal-bar-actions">
+                    <span class="memc-livedot" id="memcLiveDot" title="Sampling"></span>
+                    <button class="btn-notif fd-action-btn" title="Close" onclick="closeMemoryManager()"><span class="msi" style="font-size:20px;">close</span></button>
+                </div>
+            </div>
+
+            <div class="memc-toolbar">
+                <div class="memc-tabs" id="memcTabs">
+                    <button class="memc-tab active" data-memc-tab="overview" onclick="memcSwitchTab('overview')">Overview</button>
+                    <button class="memc-tab" data-memc-tab="modules" onclick="memcSwitchTab('modules')">Modules</button>
+                    <button class="memc-tab" data-memc-tab="growth" onclick="memcSwitchTab('growth')">Growth</button>
+                    <button class="memc-tab" data-memc-tab="ab" onclick="memcSwitchTab('ab')">A/B Compare</button>
+                    <button class="memc-tab" data-memc-tab="gc" onclick="memcSwitchTab('gc')">GC Analysis</button>
+                    <button class="memc-tab" data-memc-tab="about" onclick="memcSwitchTab('about')">Measurement</button>
+                </div>
+                <div class="memc-actions">
+                    <button class="vrcn-button memc-btn" onclick="memcSend('memcRefresh')" title="Sample now"><span class="msi">refresh</span></button>
+                    <button class="vrcn-button memc-btn" onclick="memcDeep()" title="Walk every registered structure and compute exact byte sizes. Expensive."><span class="msi">travel_explore</span> Deep Measure</button>
+                    <button class="vrcn-button memc-btn" onclick="memcCapture('A')" title="Capture snapshot A">Capture A</button>
+                    <button class="vrcn-button memc-btn" onclick="memcCapture('B')" title="Capture snapshot B">Capture B</button>
+                    <button class="vrcn-button memc-btn" onclick="memcCompare()" title="Compare A against B">Compare A/B</button>
+                    <button class="vrcn-button memc-btn memc-btn-warn" onclick="memcForceGc()" title="Full blocking compacting collection, then compare before/after"><span class="msi">delete_sweep</span> Force GC</button>
+                    <button class="vrcn-button memc-btn" onclick="memcSend('memcExport')" title="Write MemoryAnalysis JSON + TXT"><span class="msi">download</span> Export</button>
+                    <button class="vrcn-button memc-btn" onclick="memcSend('memcOpenFolder')" title="Open the analysis folder"><span class="msi">folder_open</span></button>
+                </div>
+            </div>
+
+            <div class="memc-body" id="memcBody">
+
+                <!-- Overview -->
+                <div class="memc-pane" data-memc-pane="overview">
+                    <div class="memc-attr" id="memcAttr"></div>
+                    <div class="memc-grid2">
+                        <div class="memc-panel">
+                            <div class="memc-panel-head"><span>Process Memory</span><span class="memc-src">measured — System.Diagnostics.Process</span></div>
+                            <div class="memc-rows" id="memcProcRows"></div>
+                        </div>
+                        <div class="memc-panel">
+                            <div class="memc-panel-head"><span>.NET / GC</span><span class="memc-src">runtime counters — GC API</span></div>
+                            <div class="memc-rows" id="memcGcRows"></div>
+                        </div>
+                    </div>
+                    <div class="memc-panel">
+                        <div class="memc-panel-head"><span>Live Series</span><span class="memc-src" id="memcSeriesMeta"></span></div>
+                        <div class="memc-tablewrap">
+                            <table class="memc-table" id="memcSeriesTable"></table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modules -->
+                <div class="memc-pane" data-memc-pane="modules" hidden>
+                    <div class="memc-hint" id="memcModulesHint"></div>
+                    <div id="memcModules"></div>
+                </div>
+
+                <!-- Growth -->
+                <div class="memc-pane" data-memc-pane="growth" hidden>
+                    <div class="memc-hint">Slope is measured over the retained sample window. A value is called growing or shrinking only when it moves by more than 256 KB per minute.</div>
+                    <div class="memc-tablewrap">
+                        <table class="memc-table" id="memcGrowthTable"></table>
+                    </div>
+                </div>
+
+                <!-- A/B -->
+                <div class="memc-pane" data-memc-pane="ab" hidden>
+                    <div class="memc-snapbar" id="memcSnapBar"></div>
+                    <div id="memcCompare"><div class="memc-hint">Capture A, do the thing you want to measure, capture B, then press Compare A/B.</div></div>
+                </div>
+
+                <!-- GC -->
+                <div class="memc-pane" data-memc-pane="gc" hidden>
+                    <div class="memc-hint">Force GC runs <code>GC.Collect</code> → <code>WaitForPendingFinalizers</code> → <code>GC.Collect(compacting)</code> and never runs on its own.</div>
+                    <div id="memcGcCompare"><div class="memc-hint">No forced collection in this session yet.</div></div>
+                </div>
+
+                <!-- Measurement quality -->
+                <div class="memc-pane" data-memc-pane="about" hidden>
+                    <div class="memc-panel">
+                        <div class="memc-panel-head"><span>How each number is obtained</span></div>
+                        <div class="memc-legend" id="memcLegend"></div>
+                    </div>
+                    <div class="memc-panel">
+                        <div class="memc-panel-head"><span>Attribution model</span></div>
+                        <div class="memc-about">
+                            <p>Instrumented module bytes live <strong>inside</strong> the GC heap, so they are never added on top of it. Native probes live <strong>outside</strong> the GC heap, so they are subtracted from the non-GC part of the process commit.</p>
+                            <pre class="memc-formula">managed unattributed = GC heap − Σ instrumented module bytes
+native  unattributed = process private − GC committed − Σ native probes</pre>
+                            <p>Anything the instrumentation does not cover stays in the unattributed buckets. Those buckets are never distributed across modules.</p>
+                        </div>
+                    </div>
+                    <div class="memc-panel">
+                        <div class="memc-panel-head"><span>Profiler self cost</span></div>
+                        <div class="memc-rows" id="memcSelfRows"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>

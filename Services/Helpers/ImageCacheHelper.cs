@@ -796,4 +796,80 @@ public static class ImageCacheHelper
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
+
+    // Memory Console — five process-lifetime dictionaries plus the on-disk cache.
+    // Only the dictionaries live in RAM; the image files themselves never do, which is
+    // why the disk figure is reported separately as a file-size value.
+    internal static void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        var S = (Func<string, long>)VRCNext.Services.Memc.MemorySizer.OfString;
+
+        static long MapBytes(ConcurrentDictionary<string, string> d)
+        {
+            long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(d.Count);
+            foreach (var kv in d)
+                b += VRCNext.Services.Memc.MemorySizer.OfString(kv.Key)
+                   + VRCNext.Services.Memc.MemorySizer.OfString(kv.Value);
+            return b;
+        }
+        static long StampBytes(ConcurrentDictionary<string, DateTime> d)
+        {
+            long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(d.Count, 8, 8);
+            foreach (var k in d.Keys) b += VRCNext.Services.Memc.MemorySizer.OfString(k);
+            return b;
+        }
+
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "pathCache", Label = "Entity to file-path memo",
+            Category = VRCNext.Services.Memc.MemCategory.Images,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = "Session-scoped. Empty-string values are negative cache entries.",
+            Count = () => _pathCache.Count,
+            Bytes = () => MapBytes(_pathCache),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "urlCache", Label = "Last known CDN url per entity",
+            Category = VRCNext.Services.Memc.MemCategory.Images,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = "Filled lazily from the image_versions table.",
+            Count = () => _urls.Count,
+            Bytes = () => MapBytes(_urls),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "authFileIds", Label = "Authoritative file ids",
+            Category = VRCNext.Services.Memc.MemCategory.Images,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => _authFileIds.Count,
+            Bytes = () => MapBytes(_authFileIds),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "revalidated", Label = "Revalidation timestamps",
+            Category = VRCNext.Services.Memc.MemCategory.Images,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => _revalidated.Count,
+            Bytes = () => StampBytes(_revalidated),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "downloads", Label = "In-flight downloads",
+            Category = VRCNext.Services.Memc.MemCategory.Images,
+            Quality = VRCNext.Services.Memc.MemQuality.CountOnly,
+            Note = "Entries are removed when the download task completes.",
+            Count = () => _downloads.Count,
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "diskCache", Label = "Image cache on disk",
+            Category = VRCNext.Services.Memc.MemCategory.Images,
+            Quality = VRCNext.Services.Memc.MemQuality.FileSize,
+            Deep = true,
+            Note = "Files on disk, not process memory. Decoded copies live in the WebView2 renderer, "
+                 + "which is a separate process and outside this profiler.",
+            Bytes = GetCacheSizeBytes,
+        });
+    }
 }

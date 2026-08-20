@@ -298,6 +298,9 @@ public partial class AppShell
         // Permini — load persisted list into memory
         LoadPerminiList();
 
+        // Memory Console — only assigns delegates. Nothing samples until /memc true.
+        SetupMemc();
+
 #if WINDOWS
         // System tray
         _trayService = new SystemTrayService();
@@ -678,6 +681,7 @@ public partial class AppShell
 
     private void OnClose()
     {
+        try { _memc.Dispose(); } catch { }
         try
         {
             bool anySave = false;
@@ -907,6 +911,38 @@ public partial class AppShell
     private int _friendsMarkerQueued;
     private long _lastFriendsPayloadBytes;
 
+    // WebView bridge throughput, per message type.
+    //
+    // Every string handed to SendWebMessage is copied by the native WebView layer, and
+    // those copies are what fills the process with retained message text. Counting them
+    // here turns "unattributed native growth" into a named, per-type byte figure.
+    //
+    // Only written while the Memory Console is on, so the cost when it is off is one
+    // volatile bool read per message.
+    private sealed class BridgeStat { public long Count; public long Bytes; }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, BridgeStat> _bridgeStats = new();
+    private long _bridgeSentCount, _bridgeSentBytes;
+    private long _bridgeDispatchedCount, _bridgeDispatchedBytes;
+
+    private void NoteBridgeSend(string type, int chars)
+    {
+        var bytes = chars * 2L;   // the payload travels to the WebView as UTF-16
+        Interlocked.Increment(ref _bridgeSentCount);
+        Interlocked.Add(ref _bridgeSentBytes, bytes);
+        var stat = _bridgeStats.GetOrAdd(type, _ => new BridgeStat());
+        Interlocked.Increment(ref stat.Count);
+        Interlocked.Add(ref stat.Bytes, bytes);
+    }
+
+    private void MemcResetBridgeStats()
+    {
+        _bridgeStats.Clear();
+        Interlocked.Exchange(ref _bridgeSentCount, 0);
+        Interlocked.Exchange(ref _bridgeSentBytes, 0);
+        Interlocked.Exchange(ref _bridgeDispatchedCount, 0);
+        Interlocked.Exchange(ref _bridgeDispatchedBytes, 0);
+    }
+
     private async Task RunJsDispatcherAsync()
     {
         await foreach (var msg in _jsQueue.Reader.ReadAllAsync())
@@ -921,6 +957,11 @@ public partial class AppShell
                     toSend = _pendingFriendsJson;
                     _pendingFriendsJson = null;
                 }
+            }
+            if (_memc.Enabled)
+            {
+                Interlocked.Increment(ref _bridgeDispatchedCount);
+                Interlocked.Add(ref _bridgeDispatchedBytes, toSend.Length * 2L);
             }
             try { _window.Invoke(() => _window.SendWebMessage(toSend)); } catch (Exception ex) { CrashHandler.WriteEntry("RunJsDispatcherAsync", ex); }
         }
@@ -949,6 +990,7 @@ public partial class AppShell
             catch { }
         }
         var msg = JsonConvert.SerializeObject(new { type, payload });
+        if (_memc.Enabled) NoteBridgeSend(type, msg.Length);
         if (type == "vrcFriends")
         {
             Interlocked.Exchange(ref _lastFriendsPayloadBytes, msg.Length * 2L);

@@ -133,6 +133,10 @@ window.external.receiveMessage(rawMsg => {
             case 'regBackupDone':     handleRegBackupDone(payload); break;
             case 'log': addLog(payload.msg, payload.color); break;
             case 'consoleOutput': addLog(payload.text, payload.color); break;
+            case 'memcState':    if (typeof memcApplyState === 'function') memcApplyState(payload); break;
+            case 'memcLive':     if (typeof memcHandleLive === 'function') memcHandleLive(payload); break;
+            case 'memcCompare':  if (typeof memcHandleCompare === 'function') memcHandleCompare(payload); break;
+            case 'memcExported': if (typeof memcHandleExported === 'function') memcHandleExported(payload); break;
             case 'debugImgCacheState':
                 if (typeof setImgCacheDebug === 'function') setImgCacheDebug(payload.enabled);
                 break;

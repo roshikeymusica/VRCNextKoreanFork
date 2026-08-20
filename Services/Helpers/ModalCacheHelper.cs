@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 
 namespace VRCNext.Services.Helpers;
 
@@ -44,5 +44,25 @@ public static class ModalCacheHelper
     {
         _timestamps.TryRemove(entityId, out _);
         _groupsMutualsTimestamps.TryRemove(entityId, out _);
+    }
+
+    // Memory Console — entries are only removed when the entity is looked up again
+    // after its window expired, so this map keeps every id opened this session.
+    internal static void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        static long Bytes(System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> d)
+        {
+            long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(d.Count, 8, 8);
+            foreach (var k in d.Keys) b += VRCNext.Services.Memc.MemorySizer.OfString(k);
+            return b;
+        }
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "modalTimestamps", Label = "Modal open timestamps",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => _timestamps.Count + _groupsMutualsTimestamps.Count,
+            Bytes = () => Bytes(_timestamps) + Bytes(_groupsMutualsTimestamps),
+        });
     }
 }

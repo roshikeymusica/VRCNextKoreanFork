@@ -385,4 +385,58 @@ public class WorldAPI
         catch (Exception ex) { ctx.Log($"SearchWorlds exception: {ex.Message}"); }
         return new JArray();
     }
+
+    // Memory Console — both caches hold full VRChat world JSON, so byte size requires
+    // walking the JToken trees. That is marked Deep and only runs on explicit request.
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "worldLru", Label = "World JSON LRU cache",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Deep = true,
+            Note = $"Hard cap {MemCacheMax} entries (WorldAPI.MemCacheMax).",
+            Count = () => { lock (_worldCacheLock) return _worldCacheMap.Count; },
+            Bytes = () =>
+            {
+                lock (_worldCacheLock)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(_worldCacheMap.Count, 8, 8);
+                    foreach (var node in _worldCacheLru)
+                        b += VRCNext.Services.Memc.MemorySizer.OfString(node.worldId)
+                           + VRCNext.Services.Memc.MemorySizer.OfJToken(node.world);
+                    return b;
+                }
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "worldDisk", Label = "World metadata disk-cache mirror",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Deep = true,
+            Note = $"Hard cap {DiskCacheMax} entries, loaded from world_meta_cache.json at construction.",
+            Count = () => { lock (_diskCache) return _diskCache.Count; },
+            Bytes = () =>
+            {
+                lock (_diskCache)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(_diskCache.Count);
+                    foreach (var kv in _diskCache)
+                        b += VRCNext.Services.Memc.MemorySizer.OfString(kv.Key)
+                           + VRCNext.Services.Memc.MemorySizer.OfJToken(kv.Value);
+                    return b;
+                }
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "worldFetchTasks", Label = "In-flight world fetch tasks",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.CountOnly,
+            Note = "Each entry is removed by a ContinueWith once the fetch settles.",
+            Count = () => { lock (_worldFetchTasks) return _worldFetchTasks.Count; },
+        });
+    }
 }

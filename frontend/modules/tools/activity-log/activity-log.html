@@ -1,4 +1,4 @@
-                <div class="tab-toolbar log-toolbar">
+﻿                <div class="tab-toolbar log-toolbar">
                     <div class="search-bar-row log-search"><span class="msi search-ico">search</span><input id="logSearchInput" type="text" class="vrcn-input" placeholder="Search..." data-i18n-placeholder="logs.search.placeholder" oninput="onLogSearch(this.value)"></div>
                     <div class="log-stats" id="logStats">
                         <div class="log-stat" id="statAget"><span class="log-stat-k">AGET/H</span><span class="log-stat-v zero">0</span></div>
@@ -32,5 +32,6 @@
                     <button class="vrcn-button" onclick="copyLog()" style="flex:1;justify-content:center;" title="Copy to Clipboard" data-i18n-title="activity.actions.copy_title"><span class="msi" style="font-size:16px;">content_copy</span> <span data-i18n="common.copy">Copy</span></button>
                     <button class="vrcn-button" onclick="sendToCS({action:'openLogFile'})" style="flex:1;justify-content:center;" title="Open current log file" data-i18n-title="activity.actions.open_log_title"><span class="msi" style="font-size:16px;">description</span> <span data-i18n="activity.actions.open_log">Open Log</span></button>
                     <button class="vrcn-button" onclick="sendToCS({action:'openLogFolder'})" style="flex:1;justify-content:center;" title="Open logs folder" data-i18n-title="activity.actions.open_folder_title"><span class="msi" style="font-size:16px;">folder_open</span> <span data-i18n="activity.actions.open_folder">Open Folder</span></button>
+                    <button id="memcOpenBtn" class="vrcn-button" onclick="openMemoryManager()" style="flex:1;justify-content:center;display:none;" title="Memory Manager (enable with /memc true)"><span class="msi" style="font-size:16px;">memory</span> <span>Memory Manager</span></button>
                     <button class="vrcn-button" onclick="clearLog()" style="flex:1;justify-content:center;" title="Clear log" data-i18n-title="activity.actions.clear_title"><span class="msi" style="font-size:16px;">delete_sweep</span> <span data-i18n="common.clear">Clear</span></button>
                 </div>

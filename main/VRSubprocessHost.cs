@@ -429,6 +429,26 @@ public sealed class VRSubprocessHost : IDisposable
 
     public void TrimMemory() => Send("trim");
 
+    // Memory Console
+    //
+    // Everything the VR tools allocate (OpenVR overlays, D3D11 textures, GDI bitmaps,
+    // font caches) lives in the --vr-subprocess child, not in VRCNext.exe. These are
+    // plain accessors rather than a MemcRegister method because this host is created
+    // lazily, so the Memory Console has to resolve it per sample instead of once.
+    internal bool MemcSubprocessAlive => _process is { HasExited: false };
+
+    internal long MemcSubprocessBytes(bool priv)
+    {
+        try
+        {
+            var p = _process;
+            if (p == null || p.HasExited) return 0;
+            p.Refresh();
+            return priv ? p.PrivateMemorySize64 : p.WorkingSet64;
+        }
+        catch { return 0; }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -502,6 +522,8 @@ public sealed class VRSubprocessHost : IDisposable
     public event System.Action? OnVroWaterDismissed;
     public event System.Action<float>? OnVroScaleChange;
     public event System.Action<System.Collections.Generic.List<uint>, System.Collections.Generic.List<string>, int>? OnVroScaleKeybindRecorded;
+    internal bool MemcSubprocessAlive => false;
+    internal long MemcSubprocessBytes(bool priv) => 0;
     public void Dispose() { }
 }
 #endif

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -32,6 +32,7 @@ public sealed class VoiceFightService : IDisposable
     public void StopPlayback() { }
     public void ReloadBlockList() { }
     public void Dispose() { }
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m) { }
 }
 #else
 
@@ -78,6 +79,12 @@ public sealed class VoiceFightService : IDisposable
     private readonly object _playLock = new();
 
     private Model? _model;
+
+    // Memory Console attach point. Null while /memc is off.
+    private VRCNext.Services.Memc.MemModule? _memc;
+    private VRCNext.Services.Memc.MemNativeProbe? ModelProbe() => VRCNext.Services.Memc.MemcHook.Probe(
+        _memc, "voskNative", "VOSK model (native)", VRCNext.Services.Memc.MemCategory.Models,
+        () => _model != null);
     private volatile bool _modelLoaded;
 
     public bool IsRunning => _waveIn != null;
@@ -149,9 +156,11 @@ public sealed class VoiceFightService : IDisposable
 
         _meterLevel = 0f;
 
+        var rel = VRCNext.Services.Memc.MemcHook.BeginRelease(ModelProbe());
         _model?.Dispose();
         _model = null;
         _modelLoaded = false;
+        rel?.Complete();
 
         Log("Voice Fight: stopped");
     }
@@ -225,8 +234,10 @@ public sealed class VoiceFightService : IDisposable
         try
         {
             Vosk.Vosk.SetLogLevel(-1);
+            var scope = VRCNext.Services.Memc.MemcHook.BeginLoad(ModelProbe());
             _model = new Model(ModelPath);
             _modelLoaded = true;
+            scope?.Complete($"model directory {ModelPath}");
             Log("Voice Fight: model loaded");
         }
         catch (Exception ex)
@@ -571,6 +582,75 @@ public sealed class VoiceFightService : IDisposable
     }
 
     private void Log(string msg) => OnLog?.Invoke(msg);
+
+    // Memory Console
+
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        _memc = m;
+        // Create the probe up front so a model that is already loaded is reported as
+        // "loaded before the console was enabled" instead of silently as 0 bytes.
+        ModelProbe();
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "pcmQueue", Label = "Microphone PCM queue",
+            Category = VRCNext.Services.Memc.MemCategory.Audio,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = "Exact sum of the queued byte[] buffers.",
+            Count = () => _pcmQueue.Count,
+            Bytes = () =>
+            {
+                long b = 0;
+                foreach (var buf in _pcmQueue) b += VRCNext.Services.Memc.MemorySizer.OfByteArray(buf);
+                return b + VRCNext.Services.Memc.MemorySizer.ObjectHeader;
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "keywords", Label = "Keyword and cooldown maps",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => { lock (_keywordLock) return _keywordMap.Count; },
+            Bytes = () =>
+            {
+                lock (_keywordLock)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(_keywordMap.Count);
+                    foreach (var kv in _keywordMap)
+                    {
+                        b += VRCNext.Services.Memc.MemorySizer.OfString(kv.Key)
+                           + VRCNext.Services.Memc.MemorySizer.ObjectHeader + 32
+                           + VRCNext.Services.Memc.MemorySizer.OfString(kv.Value?.Word);
+                        var files = kv.Value?.Files;
+                        if (files == null) continue;
+                        b += VRCNext.Services.Memc.MemorySizer.ListOverhead(files.Count);
+                        foreach (var f in files)
+                            b += VRCNext.Services.Memc.MemorySizer.ObjectHeader + 16
+                               + VRCNext.Services.Memc.MemorySizer.OfString(f.FilePath);
+                    }
+                    b += VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(_lastTriggered.Count, 8, 8);
+                    foreach (var k in _lastTriggered.Keys) b += VRCNext.Services.Memc.MemorySizer.OfString(k);
+                    return b;
+                }
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "blockList", Label = "Block list",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => _blockList.Count,
+            Bytes = () => VRCNext.Services.Memc.MemorySizer.OfStringSet(_blockList),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "playbackReader", Label = "Active playback reader",
+            Category = VRCNext.Services.Memc.MemCategory.Audio,
+            Quality = VRCNext.Services.Memc.MemQuality.CountOnly,
+            Note = "NAudio streams the file from disk, it is not buffered whole in managed memory.",
+            Count = () => _currentReader == null ? 0 : 1,
+        });
+    }
 
     public void Dispose()
     {

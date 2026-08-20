@@ -3207,4 +3207,88 @@ public class FriendsController
         catch (Exception ex) { CrashHandler.WriteEntry("StoreChatMessage", ex); }
         return entry;
     }
+
+    // Memory Console
+
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "friendStore", Label = "Friend user JSON store",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Deep = true,
+            Note = "One full VRChat user object per friend. Walking the JSON is expensive, so bytes are only computed on Deep Measure.",
+            Count = () => { lock (_friendStore) return _friendStore.Count; },
+            Bytes = () =>
+            {
+                lock (_friendStore)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(_friendStore.Count);
+                    foreach (var kv in _friendStore)
+                        b += VRCNext.Services.Memc.MemorySizer.OfString(kv.Key)
+                           + VRCNext.Services.Memc.MemorySizer.OfJToken(kv.Value);
+                    return b;
+                }
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "nameImg", Label = "Friend name + image map",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => _friendNameImg.Count,
+            Bytes = () => VRCNext.Services.Memc.MemorySizer.OfStringPairMap(_friendNameImg),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "favorites", Label = "Favorite friend map",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => _favoriteFriends.Count,
+            Bytes = () => VRCNext.Services.Memc.MemorySizer.OfStringPairMap(_favoriteFriends),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "lastState", Label = "Last-known state maps (loc/status/bio/avatar)",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = "Six Dictionary<string,string> used for change detection.",
+            Count = () => _friendLastLoc.Count + _friendLastStatus.Count + _friendLastStatusDesc.Count
+                        + _friendLastBio.Count + _friendLastAvatarFileId.Count + _friendCurrentGpsEventId.Count,
+            Bytes = () => VRCNext.Services.Memc.MemorySizer.OfStringMap(_friendLastLoc)
+                        + VRCNext.Services.Memc.MemorySizer.OfStringMap(_friendLastStatus)
+                        + VRCNext.Services.Memc.MemorySizer.OfStringMap(_friendLastStatusDesc)
+                        + VRCNext.Services.Memc.MemorySizer.OfStringMap(_friendLastBio)
+                        + VRCNext.Services.Memc.MemorySizer.OfStringMap(_friendLastAvatarFileId)
+                        + VRCNext.Services.Memc.MemorySizer.OfStringMap(_friendCurrentGpsEventId),
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "pendingOffline", Label = "Pending-offline debounce set",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => { lock (_pendingOfflineLock) return _pendingOffline.Count; },
+            Bytes = () =>
+            {
+                lock (_pendingOfflineLock)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(_pendingOffline.Count, 8, 24);
+                    foreach (var kv in _pendingOffline)
+                        b += VRCNext.Services.Memc.MemorySizer.OfString(kv.Key)
+                           + VRCNext.Services.Memc.MemorySizer.OfString(kv.Value.Platform);
+                    return b;
+                }
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "travelingRefresh", Label = "Traveling + in-flight refresh sets",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => _travelingFriends.Count + _profileRefreshInFlight.Count,
+            Bytes = () => VRCNext.Services.Memc.MemorySizer.OfStringSet(_travelingFriends)
+                        + VRCNext.Services.Memc.MemorySizer.OfStringSet(_profileRefreshInFlight),
+        });
+    }
 }

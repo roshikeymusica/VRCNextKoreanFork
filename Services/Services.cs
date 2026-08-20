@@ -1102,6 +1102,34 @@ public class PhotoPlayersStore : IDisposable
 
     public void Save() { }
 
+    // Memory Console — the whole photo_records table is held in Photos for the process lifetime.
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        var S = (Func<string, long>)VRCNext.Services.Memc.MemorySizer.OfString;
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "photoRecords", Label = "Photo player records",
+            Category = VRCNext.Services.Memc.MemCategory.Database,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = "Loaded once in LoadFromDb, never trimmed.",
+            Count = () => Photos.Count,
+            Bytes = () =>
+            {
+                long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(Photos.Count);
+                foreach (var kv in Photos)
+                {
+                    b += S(kv.Key) + VRCNext.Services.Memc.MemorySizer.ObjectHeader + 16;
+                    b += S(kv.Value.WorldId);
+                    b += VRCNext.Services.Memc.MemorySizer.ListOverhead(kv.Value.Players.Count);
+                    foreach (var p in kv.Value.Players)
+                        b += VRCNext.Services.Memc.MemorySizer.ObjectHeader + 24
+                           + S(p.UserId) + S(p.DisplayName) + S(p.Image);
+                }
+                return b;
+            },
+        });
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

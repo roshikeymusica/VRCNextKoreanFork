@@ -2553,6 +2553,70 @@ public class UnifiedTimeEngine : IDisposable
         }
     }
 
+    // Memory Console — both dictionaries are loaded whole at startup and never trimmed.
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        var S = (Func<string, long>)VRCNext.Services.Memc.MemorySizer.OfString;
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "userTracking", Label = "User tracking records",
+            Category = VRCNext.Services.Memc.MemCategory.Database,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = "Whole user_tracking table, loaded once in LoadUsersFromDb and held for the process lifetime.",
+            Count = () => { lock (_lock) return Users.Count; },
+            Bytes = () =>
+            {
+                lock (_lock)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(Users.Count);
+                    foreach (var kv in Users)
+                    {
+                        b += S(kv.Key) + VRCNext.Services.Memc.MemorySizer.ObjectHeader + 8 * 5;
+                        b += S(kv.Value.LastSeen) + S(kv.Value.LastSeenLocation)
+                           + S(kv.Value.DisplayName) + S(kv.Value.Image);
+                    }
+                    return b;
+                }
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "worldTracking", Label = "World tracking records",
+            Category = VRCNext.Services.Memc.MemCategory.Database,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => { lock (_lock) return Worlds.Count; },
+            Bytes = () =>
+            {
+                lock (_lock)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(Worlds.Count);
+                    foreach (var kv in Worlds)
+                    {
+                        b += S(kv.Key) + VRCNext.Services.Memc.MemorySizer.ObjectHeader + 8 * 5;
+                        b += S(kv.Value.LastVisited) + S(kv.Value.WorldName) + S(kv.Value.WorldThumb);
+                    }
+                    return b;
+                }
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "playerSessions", Label = "Open player sessions",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => { lock (_lock) return _playerSessions.Count; },
+            Bytes = () =>
+            {
+                lock (_lock)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(_playerSessions.Count, 8, 8);
+                    foreach (var k in _playerSessions.Keys) b += S(k);
+                    return b;
+                }
+            },
+        });
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

@@ -464,6 +464,8 @@ public partial class AppShell
                         SendToJS("log", new { msg = $"[LOAD ERROR] {AppSettings.LastLoadError}", color = "err" });
                     SendToJS("log", new { msg = $"[LOAD] {AppSettings.LoadDebugInfo}", color = "sec" });
                     SendToJS("log", new { msg = $"[STARTUP] Webhooks: {string.Join(", ", _settings.Webhooks.Select((w,i) => $"#{i+1} \"{w.Name}\" url={w.Url?.Length ?? 0}ch {(w.Enabled?"ON":"off")}"))}", color = "sec" });
+                    // Re-announce Memory Console state so the toolbar button survives a page reload.
+                    SendToJS("memcState", new { enabled = _memc.Enabled, intervalMs = _memc.IntervalMs });
                     _authCtrl.HandleReady();
                     FlushPendingDeepLink();
                     // Check for crash report from previous session — show modal after UI is ready
@@ -933,7 +935,15 @@ public partial class AppShell
                     var result = ConsoleHelper.Execute(cmd);
                     if (!string.IsNullOrEmpty(result.Text))
                         SendToJS("consoleOutput", new { text = result.Text, color = result.Color });
-                    if (result.Extra == "forceTrim")
+                    if (result.Extra == "memc" && result.ExtraPayload != null)
+                    {
+                        var argsTok = JObject.FromObject(result.ExtraPayload)["args"] as JArray;
+                        var parts = argsTok?.Select(a => a.ToString()).ToArray() ?? new[] { "/memc" };
+                        var memcResult = MemcCommand(parts);
+                        if (!string.IsNullOrEmpty(memcResult.Text))
+                            SendToJS("consoleOutput", new { text = memcResult.Text, color = memcResult.Color });
+                    }
+                    else if (result.Extra == "forceTrim")
                         _core.MemTrim.TrimNow();
                     else if (result.Extra == "fixNps")
                         VRCNext.Services.WindowsFixes.ForceFix();
@@ -999,6 +1009,21 @@ public partial class AppShell
                 case "openLogFolder":
                     if (!string.IsNullOrEmpty(_activityLogDir) && Directory.Exists(_activityLogDir))
                         Process.Start(new ProcessStartInfo(_activityLogDir) { UseShellExecute = true });
+                    break;
+
+                // Memory Console — all of these are no-ops unless /memc true was issued.
+                case "memcState":
+                case "memcOpen":
+                case "memcDetail":
+                case "memcClose":
+                case "memcRefresh":
+                case "memcDeep":
+                case "memcCapture":
+                case "memcCompare":
+                case "memcForceGc":
+                case "memcExport":
+                case "memcOpenFolder":
+                    await HandleMemcAction(action, msg);
                     break;
 
 

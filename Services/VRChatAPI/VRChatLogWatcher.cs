@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace VRCNext.Services;
 
@@ -586,6 +586,68 @@ public class VRChatLogWatcher : IDisposable
             }
             return;
         }
+    }
+
+    // Memory Console
+    internal void MemcRegister(VRCNext.Services.Memc.MemModule m)
+    {
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "players", Label = "Current instance players",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => { lock (_lock) return _players.Count; },
+            Bytes = () =>
+            {
+                lock (_lock)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(_players.Count);
+                    foreach (var kv in _players)
+                        b += VRCNext.Services.Memc.MemorySizer.OfString(kv.Key)
+                           + VRCNext.Services.Memc.MemorySizer.ObjectHeader + 48
+                           + VRCNext.Services.Memc.MemorySizer.OfString(kv.Value.DisplayName)
+                           + VRCNext.Services.Memc.MemorySizer.OfString(kv.Value.UserId);
+                    return b;
+                }
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "playerEventLog", Label = "Join/leave event log (since room change)",
+            Category = VRCNext.Services.Memc.MemCategory.History,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Note = "Append-only, reset on room change. Grows with instance churn.",
+            Count = () => { lock (_lock) return _playerEventLog.Count; },
+            Bytes = () =>
+            {
+                lock (_lock)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.ListOverhead(_playerEventLog.Count);
+                    foreach (var e in _playerEventLog)
+                        b += VRCNext.Services.Memc.MemorySizer.ObjectHeader + 32
+                           + VRCNext.Services.Memc.MemorySizer.OfString(e.DisplayName)
+                           + VRCNext.Services.Memc.MemorySizer.OfString(e.UserId)
+                           + VRCNext.Services.Memc.MemorySizer.OfString(e.Type);
+                    return b;
+                }
+            },
+        });
+        m.Add(new VRCNext.Services.Memc.MemResource
+        {
+            Id = "pastLefts", Label = "Stale-session leave timestamps",
+            Category = VRCNext.Services.Memc.MemCategory.Managed,
+            Quality = VRCNext.Services.Memc.MemQuality.Instrumented,
+            Count = () => { lock (_lock) return _pastLefts.Count; },
+            Bytes = () =>
+            {
+                lock (_lock)
+                {
+                    long b = VRCNext.Services.Memc.MemorySizer.DictionaryOverhead(_pastLefts.Count, 8, 8);
+                    foreach (var k in _pastLefts.Keys) b += VRCNext.Services.Memc.MemorySizer.OfString(k);
+                    return b;
+                }
+            },
+        });
     }
 
     public void Dispose() { _disposed = true; Stop(); }
